@@ -1,20 +1,35 @@
+// BASIC CONFIGURATION, our servo motors can rotate between 0 and 220 degrees, so we set these
+// as our minimum and maximum angles for the robot's legs to move.
+const MIN_ANGLE = 0
+const MAX_ANGLE = 220
+const NEUTRAL_ANGLE = 110
+
+// SERVO ALIASES — map semantic names to RobotBit servo IDs
+const SHOULDER_FL = robotbit.Servos.S1  // Front-Left  Shoulder
+const KNEE_FL     = robotbit.Servos.S2  // Front-Left  Knee
+const SHOULDER_RL = robotbit.Servos.S3  // Front-Right Shoulder
+const KNEE_RL     = robotbit.Servos.S4  // Front-Right Knee
+const SHOULDER_RR = robotbit.Servos.S5  // Rear-Left   Shoulder
+const KNEE_RR     = robotbit.Servos.S6  // Rear-Left   Knee
+const SHOULDER_FR = robotbit.Servos.S7  // Rear-Right  Shoulder
+const KNEE_FR     = robotbit.Servos.S8  // Rear-Right  Knee
+
 showInitLightShow()
 
 input.onLogoEvent(TouchButtonEvent.Pressed, function () {
-  useStateReset()
+  useStateStand()
 })
 input.onButtonPressed(Button.A, function () {
-  useStateReset()
+  useStateMinimumShoulders()
 })
 input.onButtonPressed(Button.AB, function () {
-  useStateCrab()
+  useStateReset();
 })
 input.onButtonPressed(Button.B, function () {
-  useState135()
+  useStateMaximumShoulders()
 })
 
 basic.forever(function () {
-
 })
 
 function showGreenLed() {
@@ -63,46 +78,63 @@ function showRedLed() {
 function showYellowLed() {
   robotbit.rgb().showColor(neopixel.hsl(120, 74, 1))
 }
-function useState135() {
-  robotbit.Servo(robotbit.Servos.S1, 135)
-  robotbit.Servo(robotbit.Servos.S2, 135)
-  robotbit.Servo(robotbit.Servos.S3, 135)
-  robotbit.Servo(robotbit.Servos.S4, 135)
-  robotbit.Servo(robotbit.Servos.S5, 135)
-  robotbit.Servo(robotbit.Servos.S6, 135)
-  robotbit.Servo(robotbit.Servos.S7, 135)
-  robotbit.Servo(robotbit.Servos.S8, 135)
-}
 function useStateCrab() {
-  for (let angle = 0; angle <= 360; angle += 10) {
-    robotbit.Servo(robotbit.Servos.S1, angle)
-    robotbit.Servo(robotbit.Servos.S2, angle)
-    robotbit.Servo(robotbit.Servos.S3, angle)
-    robotbit.Servo(robotbit.Servos.S4, angle)
-    robotbit.Servo(robotbit.Servos.S5, angle)
-    robotbit.Servo(robotbit.Servos.S6, angle)
-    robotbit.Servo(robotbit.Servos.S7, angle)
-    robotbit.Servo(robotbit.Servos.S8, angle)
+  for (let angle = MIN_ANGLE; angle <= MAX_ANGLE; angle += 10) {
+    robotbit.Servo(SHOULDER_FL, Math.min(Math.max(angle, MIN_ANGLE), MAX_ANGLE))
+    robotbit.Servo(KNEE_FL,     Math.min(Math.max(angle, MIN_ANGLE), MAX_ANGLE))
+    robotbit.Servo(SHOULDER_RL, Math.min(Math.max(angle, MIN_ANGLE), MAX_ANGLE))
+    robotbit.Servo(KNEE_RL,     Math.min(Math.max(angle, MIN_ANGLE), MAX_ANGLE))
+    robotbit.Servo(SHOULDER_RR, Math.min(Math.max(angle, MIN_ANGLE), MAX_ANGLE))
+    robotbit.Servo(KNEE_RR,     Math.min(Math.max(angle, MIN_ANGLE), MAX_ANGLE))
+    robotbit.Servo(SHOULDER_FR, Math.min(Math.max(angle, MIN_ANGLE), MAX_ANGLE))
+    robotbit.Servo(KNEE_FR,     Math.min(Math.max(angle, MIN_ANGLE), MAX_ANGLE))
     basic.pause(500)
   }
 }
+function useStateLie() {
+  robotbit.Servo(KNEE_FL, NEUTRAL_ANGLE)
+  robotbit.Servo(KNEE_RL, NEUTRAL_ANGLE)
+  robotbit.Servo(KNEE_RR, NEUTRAL_ANGLE)
+  robotbit.Servo(KNEE_FR, NEUTRAL_ANGLE)
+  // KNEE_1, KNEE_2, KNEE_3, KNEE_4 (knees) are intentionally left untouched
+}
+function useStateMaximumKnees() {
+  robotbit.Servo(KNEE_FL, MAX_ANGLE)
+  robotbit.Servo(KNEE_RL, MAX_ANGLE)
+  robotbit.Servo(KNEE_RR, MAX_ANGLE)
+  robotbit.Servo(KNEE_FR, MAX_ANGLE)
+}
+function useStateMaximumShoulders() {
+  robotbit.Servo(SHOULDER_FL, MAX_ANGLE)
+  robotbit.Servo(SHOULDER_RL, MAX_ANGLE)
+  robotbit.Servo(SHOULDER_RR, MAX_ANGLE)
+  robotbit.Servo(SHOULDER_FR, MAX_ANGLE)
+}
+function useStateMinimumKnees() {
+  robotbit.Servo(KNEE_FL, MIN_ANGLE)
+  robotbit.Servo(KNEE_RL, MIN_ANGLE)
+  robotbit.Servo(KNEE_RR, MIN_ANGLE)
+  robotbit.Servo(KNEE_FR, MIN_ANGLE)
+}
+function useStateMinimumShoulders() {
+  robotbit.Servo(SHOULDER_FL, MIN_ANGLE)
+  robotbit.Servo(SHOULDER_RL, MIN_ANGLE)
+  robotbit.Servo(SHOULDER_RR, MIN_ANGLE)
+  robotbit.Servo(SHOULDER_FR, MIN_ANGLE)
+}
 function useStateReset() {
-  robotbit.Servo(robotbit.Servos.S1, 45)
-  robotbit.Servo(robotbit.Servos.S2, 45)
-  robotbit.Servo(robotbit.Servos.S3, 45)
-  robotbit.Servo(robotbit.Servos.S4, 45)
-  robotbit.Servo(robotbit.Servos.S5, 45)
-  robotbit.Servo(robotbit.Servos.S6, 45)
-  robotbit.Servo(robotbit.Servos.S7, 45)
-  robotbit.Servo(robotbit.Servos.S8, 45)
+  robotbit.Servo(SHOULDER_FL, NEUTRAL_ANGLE)
+  robotbit.Servo(KNEE_FL,     NEUTRAL_ANGLE)
+  robotbit.Servo(SHOULDER_RL, NEUTRAL_ANGLE)
+  robotbit.Servo(KNEE_RL,     NEUTRAL_ANGLE)
+  robotbit.Servo(SHOULDER_RR, NEUTRAL_ANGLE)
+  robotbit.Servo(KNEE_RR,     NEUTRAL_ANGLE)
+  robotbit.Servo(SHOULDER_FR, NEUTRAL_ANGLE)
+  robotbit.Servo(KNEE_FR,     NEUTRAL_ANGLE)
 }
 function useStateStand() {
-  robotbit.Servo(robotbit.Servos.S1, 45)
-  robotbit.Servo(robotbit.Servos.S2, 90)
-  robotbit.Servo(robotbit.Servos.S3, 135)
-  robotbit.Servo(robotbit.Servos.S4, 90)
-  robotbit.Servo(robotbit.Servos.S5, 225)
-  robotbit.Servo(robotbit.Servos.S6, 90)
-  robotbit.Servo(robotbit.Servos.S7, 315)
-  robotbit.Servo(robotbit.Servos.S8, 90)
+  robotbit.Servo(KNEE_FL, MIN_ANGLE)
+  robotbit.Servo(KNEE_RL, MAX_ANGLE)
+  robotbit.Servo(KNEE_RR, MIN_ANGLE)
+  robotbit.Servo(KNEE_FR, MAX_ANGLE)
 }

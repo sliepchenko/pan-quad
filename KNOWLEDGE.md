@@ -46,16 +46,22 @@ The main source file is `index.js`. There is no build pipeline — code is writt
 
 The robot has 4 legs. Each leg uses 2 servos: one for the **shoulder** (hip rotation) and one for the **knee** (leg lift/lower).
 
-| Servo ID | Leg | Joint |
-|---|---|---|
-| S1 | Front-Left | Shoulder |
-| S2 | Front-Left | Knee |
-| S3 | Front-Right | Shoulder |
-| S4 | Front-Right | Knee |
-| S5 | Rear-Left | Shoulder |
-| S6 | Rear-Left | Knee |
-| S7 | Rear-Right | Shoulder |
-| S8 | Rear-Right | Knee |
+| Servo ID | Alias | Leg | Joint |
+|---|---|---|---|
+| S1 | `SHOULDER_FL` | Front-Left | Shoulder |
+| S2 | `KNEE_1` | Front-Left | Knee |
+| S3 | `SHOULDER_RL` | Front-Right | Shoulder |
+| S4 | `KNEE_2` | Front-Right | Knee |
+| S5 | `SHOULDER_3` | Rear-Left | Shoulder |
+| S6 | `KNEE_3` | Rear-Left | Knee |
+| S7 | `SHOULDER_FR` | Rear-Right | Shoulder |
+| S8 | `KNEE_4` | Rear-Right | Knee |
+
+> **Joint grouping:**
+ > - **Shoulders (hip rotation):** SHOULDER_FL, SHOULDER_RL, SHOULDER_3, SHOULDER_FR (S1, S3, S5, S7)
+> - **Knees (leg lift/lower):** KNEE_1, KNEE_2, KNEE_3, KNEE_4 (S2, S4, S6, S8)
+
+> **Alias consts** are defined at the top of `index.js` (lines 9–16) and must be used in all servo calls instead of raw `robotbit.Servos.Sx` references.
 
 > **Note:** Exact left/right and front/rear assignments should be verified physically. Servo orientation (whether 90° is neutral or another angle) depends on how each servo is mechanically mounted.
 
@@ -63,46 +69,124 @@ The robot has 4 legs. Each leg uses 2 servos: one for the **shoulder** (hip rota
 
 ## Robot States
 
+### `useStateLie()`
+
+The robot lies flat. Only the shoulder servos (odd IDs: S1, S3, S5, S7) are moved to 110°. Knee servos (even IDs: S2, S4, S6, S8) are intentionally left untouched — they remain at whatever angle they were in previously.
+
+| Servo | Angle | Description |
+|---|---|---|
+| S1 | 110 | Front-Left Shoulder (SHOULDER_FL) |
+| S2 | (unchanged) | Front-Left Knee |
+| S3 | 110 | Front-Right Shoulder |
+| S4 | (unchanged) | Front-Right Knee |
+| S5 | 110 | Rear-Left Shoulder |
+| S6 | (unchanged) | Rear-Left Knee |
+| S7 | 110 | Rear-Right Shoulder (SHOULDER_FR) |
+| S8 | (unchanged) | Rear-Right Knee |
+
 ### `useStateStand()`
 
 The robot stands upright. This is the primary/idle state, triggered by Button A.
 
 | Servo | Angle | Description |
 |---|---|---|
-| S1 | 45 | Front-Left Shoulder |
+| S1 | 45 | Front-Left Shoulder (SHOULDER_FL) |
 | S2 | 90 | Front-Left Knee |
 | S3 | 135 | Front-Right Shoulder |
 | S4 | 90 | Front-Right Knee |
 | S5 | 225 | Rear-Left Shoulder |
 | S6 | 90 | Rear-Left Knee |
-| S7 | 315 | Rear-Right Shoulder |
+| S7 | 315 | Rear-Right Shoulder (SHOULDER_FR) |
 | S8 | 90 | Rear-Right Knee |
 
-### `useState135()`
+### `useStateMinus130()`
 
-Sets all servos to 135°. Triggered by Button B.
+Sets all servos to -130°. Triggered by Button A.
+
+> **Note:** This state predates the introduction of `MIN_ANGLE`/`MAX_ANGLE` constants. It is preserved for reference only; the active minimum state is now `useStateMinimum()`.
 
 | Servo | Angle |
 |---|---|
-| S1 | 135 |
-| S2 | 135 |
-| S3 | 135 |
-| S4 | 135 |
-| S5 | 135 |
-| S6 | 135 |
-| S7 | 135 |
-| S8 | 135 |
+| S1 | -130 |
+| S2 | -130 |
+| S3 | -130 |
+| S4 | -130 |
+| S5 | -130 |
+| S6 | -130 |
+| S7 | -130 |
+| S8 | -130 |
+
+### `useState230()`
+
+Sets all servos to 230°. Triggered by Button B.
+
+> **Note:** This state predates the introduction of `MIN_ANGLE`/`MAX_ANGLE` constants. It is preserved for reference only; the active maximum state is now `useStateMaximum()`.
+
+| Servo | Angle |
+|---|---|
+| S1 | 230 |
+| S2 | 230 |
+| S3 | 230 |
+| S4 | 230 |
+| S5 | 230 |
+| S6 | 230 |
+| S7 | 230 |
+| S8 | 230 |
 
 ### `useStateCrab()`
 
-Sweeps all 8 servos simultaneously from 0° to 360° in steps of 10°, pausing 500 ms between each step. Triggered by Button A+B. Total sweep takes ~37 seconds (37 steps × 500 ms).
+Sweeps all 8 servos simultaneously from `MIN_ANGLE` to `MAX_ANGLE` in steps of 10°, pausing 500 ms between each step. Triggered by Button A+B.
 
 | Step | Angle |
 |---|---|
-| 1 | 0° |
-| 2 | 10° |
+| 1 | -130° |
+| 2 | -120° |
 | … | … |
-| 37 | 360° |
+| 37 | 230° |
+
+### `useStateMaximumKnees()`
+
+Sets all knee servos to `MAX_ANGLE`. Shoulders are untouched.
+
+| Servo | Angle |
+|---|---|
+| S2 (KNEE_1) | MAX_ANGLE |
+| S4 (KNEE_2) | MAX_ANGLE |
+| S6 (KNEE_3) | MAX_ANGLE |
+| S8 (KNEE_4) | MAX_ANGLE |
+
+### `useStateMaximumShoulders()`
+
+Sets all shoulder servos to `MAX_ANGLE`. Knees are untouched.
+
+| Servo | Angle |
+|---|---|
+| S1 (SHOULDER_FL) | MAX_ANGLE |
+| S3 (SHOULDER_RL) | MAX_ANGLE |
+| S5 (SHOULDER_3) | MAX_ANGLE |
+| S7 (SHOULDER_FR) | MAX_ANGLE |
+
+### `useStateMinimumKnees()`
+
+Sets all knee servos to `MIN_ANGLE`. Shoulders are untouched.
+
+| Servo | Angle |
+|---|---|
+| S2 (KNEE_1) | MIN_ANGLE |
+| S4 (KNEE_2) | MIN_ANGLE |
+| S6 (KNEE_3) | MIN_ANGLE |
+| S8 (KNEE_4) | MIN_ANGLE |
+
+### `useStateMinimumShoulders()`
+
+Sets all shoulder servos to `MIN_ANGLE`. Knees are untouched.
+
+| Servo | Angle |
+|---|---|
+| S1 (SHOULDER_FL) | MIN_ANGLE |
+| S3 (SHOULDER_RL) | MIN_ANGLE |
+| S5 (SHOULDER_3) | MIN_ANGLE |
+| S7 (SHOULDER_FR) | MIN_ANGLE |
 
 ### `useStateReset()`
 
@@ -143,9 +227,9 @@ RobotBit's NeoPixel is controlled via `robotbit.rgb().showColor(neopixel.hsl(h, 
 
 | Input | Action |
 |---|---|
-| A | `useStateReset()` — all servos to 45°, hard reset |
-| B | `useState135()` — all servos to 135° |
-| A+B | `useStateCrab()` — sweep all servos 0°→360° in 10° steps, 500 ms pause each |
+| A | `useStateMinus130()` — all servos to -130° |
+| B | `useState230()` — all servos to 230° |
+| A+B | `useStateCrab()` — sweep all servos -130°→230° in 10° steps, 500 ms pause each |
 | Logo (touch) | `useStateReset()` — all servos to 45°, hard reset |
 
 ---
@@ -154,16 +238,35 @@ RobotBit's NeoPixel is controlled via `robotbit.rgb().showColor(neopixel.hsl(h, 
 
 ```
 index.js
+├── const MIN_ANGLE = 0                — minimum angle for all servos
+├── const MAX_ANGLE = 220              — maximum angle for all servos
+├── const NEUTRAL_ANGLE = 110          — midpoint/neutral resting angle for all servos
+├── const SHOULDER_FL = robotbit.Servos.S1  — Front-Left  Shoulder alias
+├── const KNEE_1     = robotbit.Servos.S2  — Front-Left  Knee alias
+├── const SHOULDER_RL = robotbit.Servos.S3  — Front-Right Shoulder alias
+├── const KNEE_2     = robotbit.Servos.S4  — Front-Right Knee alias
+├── const SHOULDER_3 = robotbit.Servos.S5  — Rear-Left   Shoulder alias
+├── const KNEE_3     = robotbit.Servos.S6  — Rear-Left   Knee alias
+├── const SHOULDER_FR = robotbit.Servos.S7  — Rear-Right  Shoulder alias
+├── const KNEE_4     = robotbit.Servos.S8  — Rear-Right  Knee alias
 ├── let initialized = false            — guard flag to prevent double startup animation
 ├── if (!initialized) → showInitLightShow()  — called once on startup
 │
-├── input.onButtonPressed(Button.A)   → useStateReset()
-├── input.onButtonPressed(Button.B)   → useState135()
+├── input.onButtonPressed(Button.A)   → useStateMinus130()
+├── input.onButtonPressed(Button.B)   → useState230()
 ├── input.onButtonPressed(Button.AB)  → useStateCrab()
 ├── input.onLogoEvent(Pressed)        → useStateReset()
 │
-├── useState135()                     — all 8 servos to 135°
-├── useStateCrab()                    — sweep all 8 servos 0°→360° in 10° steps, 500ms pause
+├── useState230()                     — all 8 servos to 230°
+├── useStateCrab()                    — sweep all 8 servos MIN→MAX in 10° steps, 500ms pause
+├── useStateLie()                     — shoulders (S1,S3,S5,S7) to 110°; knees untouched
+├── useStateMaximum()                 — all 8 servos to SHOULDER/KNEE_MAX_ANGLE
+├── useStateMaximumKnees()            — knees (S2,S4,S6,S8) to KNEE_MAX_ANGLE
+├── useStateMaximumShoulders()        — shoulders (S1,S3,S5,S7) to SHOULDER_MAX_ANGLE
+├── useStateMinus130()                — all 8 servos to -130°
+├── useStateMinimum()                 — all 8 servos to SHOULDER/KNEE_MIN_ANGLE
+├── useStateMinimumKnees()            — knees (S2,S4,S6,S8) to KNEE_MIN_ANGLE
+├── useStateMinimumShoulders()        — shoulders (S1,S3,S5,S7) to SHOULDER_MIN_ANGLE
 ├── useStateReset()                   — all 8 servos to 45° (hard reset)
 ├── useStateStand()                   — 8 servo calls for standing pose
 │
@@ -210,7 +313,7 @@ Currently there is no formal state machine or state variable. Each button direct
 
 2. **LED helpers are unused.** None of the LED helper functions are called from button handlers or state functions. No visual feedback is currently active.
 
-3. **Button A+B triggers `useStateCrab()`** — sweeps all servos 0°→360° in 10° steps with 500 ms pauses (~37 s total).
+3. **Button A+B triggers `useStateCrab()`** — sweeps all servos -130°→230° in 10° steps with 500 ms pauses (~37 s total).
 
 4. **`basic.forever()` is empty.** Reserved for gait animation or sensor polling. No walking gait is implemented yet.
 
