@@ -1,8 +1,10 @@
 // BASIC CONFIGURATION, our servo motors can rotate between 0 and 220 degrees, so we set these
 // as our minimum and maximum angles for the robot's legs to move.
 const MIN_ANGLE = 0
-const MAX_ANGLE = 220
+const QUATER_ANGLE = 55
 const NEUTRAL_ANGLE = 110
+const THREE_QUARTER_ANGLE = 165
+const MAX_ANGLE = 220
 
 // SERVO ALIASES — map semantic names to RobotBit servo IDs
 const SHOULDER_FL = robotbit.Servos.S1  // Front-Left  Shoulder
@@ -17,19 +19,20 @@ const KNEE_FR     = robotbit.Servos.S8  // Rear-Right  Knee
 showInitLightShow()
 
 input.onLogoEvent(TouchButtonEvent.Pressed, function () {
-  useStateStand()
+  stepForward(200)
 })
 input.onButtonPressed(Button.A, function () {
-  useStateMinimumShoulders()
+  useStateLie()
 })
 input.onButtonPressed(Button.AB, function () {
   useStateReset();
 })
 input.onButtonPressed(Button.B, function () {
-  useStateMaximumShoulders()
+  useStateStand()
 })
 
 basic.forever(function () {
+
 })
 
 function showGreenLed() {
@@ -137,4 +140,45 @@ function useStateStand() {
   robotbit.Servo(KNEE_RL, MAX_ANGLE)
   robotbit.Servo(KNEE_RR, MIN_ANGLE)
   robotbit.Servo(KNEE_FR, MAX_ANGLE)
+}
+function stepForward(speed: number) {
+  // step forward sequence for FRONT-LEFT leg
+  robotbit.Servo(KNEE_FL, NEUTRAL_ANGLE)
+  basic.pause(speed)
+  robotbit.Servo(SHOULDER_FL, NEUTRAL_ANGLE)
+  basic.pause(speed)
+  robotbit.Servo(KNEE_FL, MIN_ANGLE)
+  basic.pause(speed)
+  robotbit.Servo(SHOULDER_FL, MAX_ANGLE)
+  basic.pause(speed)
+
+  // step forward sequence for REACK-RIGHT leg
+  robotbit.Servo(KNEE_RR, NEUTRAL_ANGLE)
+  basic.pause(speed)
+  robotbit.Servo(SHOULDER_RR, MAX_ANGLE)
+  basic.pause(speed)
+  robotbit.Servo(KNEE_RR, MIN_ANGLE)
+  basic.pause(speed)
+  robotbit.Servo(SHOULDER_RR, NEUTRAL_ANGLE)
+  basic.pause(speed)
+
+  // step forward sequence for FRONT-RIGHT leg
+  robotbit.Servo(KNEE_FR, NEUTRAL_ANGLE)
+  basic.pause(speed)
+  robotbit.Servo(SHOULDER_FR, NEUTRAL_ANGLE)
+  basic.pause(speed)
+  robotbit.Servo(KNEE_FR, MAX_ANGLE)
+  basic.pause(speed)
+  robotbit.Servo(SHOULDER_FR, MIN_ANGLE)
+  basic.pause(speed)
+
+  // step forward sequence for REAR-LEFT leg
+  robotbit.Servo(KNEE_RL, NEUTRAL_ANGLE)
+  basic.pause(speed)
+  robotbit.Servo(SHOULDER_RL, MIN_ANGLE)
+  basic.pause(speed)
+  robotbit.Servo(KNEE_RL, MAX_ANGLE)
+  basic.pause(speed)
+  robotbit.Servo(SHOULDER_RL, NEUTRAL_ANGLE)
+  basic.pause(speed)
 }
