@@ -69,6 +69,21 @@ The robot has 4 legs. Each leg uses 2 servos: one for the **shoulder** (hip rota
 
 ## Robot States
 
+### `useStateDefault()`
+
+All shoulders set to `NEUTRAL_ANGLE` (110°). Knees use the same configuration as `useStateStand()`.
+
+| Servo | Angle | Description |
+|---|---|---|
+| S1 (SHOULDER_FL) | NEUTRAL_ANGLE (110) | Front-Left Shoulder |
+| S3 (SHOULDER_RL) | NEUTRAL_ANGLE (110) | Front-Right Shoulder |
+| S5 (SHOULDER_RR) | NEUTRAL_ANGLE (110) | Rear-Left Shoulder |
+| S7 (SHOULDER_FR) | NEUTRAL_ANGLE (110) | Rear-Right Shoulder |
+| S2 (KNEE_FL) | MIN_ANGLE (0) | Front-Left Knee |
+| S4 (KNEE_RL) | MAX_ANGLE (220) | Front-Right Knee |
+| S6 (KNEE_RR) | MIN_ANGLE (0) | Rear-Left Knee |
+| S8 (KNEE_FR) | MAX_ANGLE (220) | Rear-Right Knee |
+
 ### `useStateLie()`
 
 The robot lies flat. Only the shoulder servos (odd IDs: S1, S3, S5, S7) are moved to 110°. Knee servos (even IDs: S2, S4, S6, S8) are intentionally left untouched — they remain at whatever angle they were in previously.
@@ -259,6 +274,7 @@ index.js
 │
 ├── useState230()                     — all 8 servos to 230°
 ├── useStateCrab()                    — sweep all 8 servos MIN→MAX in 10° steps, 500ms pause
+├── useStateDefault()                 — shoulders to NEUTRAL_ANGLE; knees same as useStateStand()
 ├── useStateLie()                     — shoulders (S1,S3,S5,S7) to 110°; knees untouched
 ├── useStateMaximum()                 — all 8 servos to SHOULDER/KNEE_MAX_ANGLE
 ├── useStateMaximumKnees()            — knees (S2,S4,S6,S8) to KNEE_MAX_ANGLE
@@ -269,6 +285,15 @@ index.js
 ├── useStateMinimumShoulders()        — shoulders (S1,S3,S5,S7) to SHOULDER_MIN_ANGLE
 ├── useStateReset()                   — all 8 servos to 45° (hard reset)
 ├── useStateStand()                   — 8 servo calls for standing pose
+│
+├── doFrontLeftKneeDown/Straight/Up() — atomic knee actions, Front-Left leg
+├── doFrontLeftShoulderBack/Forward/Straight() — atomic shoulder actions, Front-Left leg
+├── doFrontRightKneeDown/Straight/Up() — atomic knee actions, Front-Right leg
+├── doFrontRightShoulderBack/Forward/Straight() — atomic shoulder actions, Front-Right leg
+├── doRearLeftKneeDown/Straight/Up()  — atomic knee actions, Rear-Left leg
+├── doRearLeftShoulderBack/Forward/Straight() — atomic shoulder actions, Rear-Left leg
+├── doRearRightKneeDown/Straight/Up() — atomic knee actions, Rear-Right leg
+├── doRearRightShoulderBack/Forward/Straight() — atomic shoulder actions, Rear-Right leg
 │
 ├── showGreenLed()                    — NeoPixel green
 ├── showInitLightShow()               — red scanner across pixels 0→3 on startup
@@ -285,6 +310,55 @@ index.js
 - `basic.forever()` is intentionally empty; reserved for gait loops or sensor polling.
 - Button A+B is intentionally empty; reserved for future combined actions.
 - **All functions must be placed at the bottom of the file, ordered alphabetically (A to Z) by function name.**
+
+---
+
+## Atomic Joint Action Functions
+
+These 24 single-servo helper functions are the building blocks for gait sequences. Each sets exactly one servo to the appropriate angle for the named action.
+
+### Angle semantics
+
+| Side | Knee down (standing) | Knee up (lifted) | Shoulder forward | Shoulder back |
+|---|---|---|---|---|
+| FL / RR (left side) | `MIN_ANGLE` (0) | `MAX_ANGLE` (220) | `MAX_ANGLE` (220) | `MIN_ANGLE` (0) |
+| FR / RL (right side) | `MAX_ANGLE` (220) | `MIN_ANGLE` (0) | `MIN_ANGLE` (0) | `MAX_ANGLE` (220) |
+
+Straight / neutral for all joints = `NEUTRAL_ANGLE` (110).
+
+### Knee functions
+
+| Function | Servo | Angle |
+|---|---|---|
+| `doFrontLeftKneeDown()` | `KNEE_FL` | `MIN_ANGLE` |
+| `doFrontLeftKneeStraight()` | `KNEE_FL` | `NEUTRAL_ANGLE` |
+| `doFrontLeftKneeUp()` | `KNEE_FL` | `MAX_ANGLE` |
+| `doFrontRightKneeDown()` | `KNEE_RL` | `MAX_ANGLE` |
+| `doFrontRightKneeStraight()` | `KNEE_RL` | `NEUTRAL_ANGLE` |
+| `doFrontRightKneeUp()` | `KNEE_RL` | `MIN_ANGLE` |
+| `doRearLeftKneeDown()` | `KNEE_RR` | `MIN_ANGLE` |
+| `doRearLeftKneeStraight()` | `KNEE_RR` | `NEUTRAL_ANGLE` |
+| `doRearLeftKneeUp()` | `KNEE_RR` | `MAX_ANGLE` |
+| `doRearRightKneeDown()` | `KNEE_FR` | `MAX_ANGLE` |
+| `doRearRightKneeStraight()` | `KNEE_FR` | `NEUTRAL_ANGLE` |
+| `doRearRightKneeUp()` | `KNEE_FR` | `MIN_ANGLE` |
+
+### Shoulder functions
+
+| Function | Servo | Angle |
+|---|---|---|
+| `doFrontLeftShoulderBack()` | `SHOULDER_FL` | `MIN_ANGLE` |
+| `doFrontLeftShoulderForward()` | `SHOULDER_FL` | `MAX_ANGLE` |
+| `doFrontLeftShoulderStraight()` | `SHOULDER_FL` | `NEUTRAL_ANGLE` |
+| `doFrontRightShoulderBack()` | `SHOULDER_RL` | `MAX_ANGLE` |
+| `doFrontRightShoulderForward()` | `SHOULDER_RL` | `MIN_ANGLE` |
+| `doFrontRightShoulderStraight()` | `SHOULDER_RL` | `NEUTRAL_ANGLE` |
+| `doRearLeftShoulderBack()` | `SHOULDER_RR` | `MIN_ANGLE` |
+| `doRearLeftShoulderForward()` | `SHOULDER_RR` | `MAX_ANGLE` |
+| `doRearLeftShoulderStraight()` | `SHOULDER_RR` | `NEUTRAL_ANGLE` |
+| `doRearRightShoulderBack()` | `SHOULDER_FR` | `MAX_ANGLE` |
+| `doRearRightShoulderForward()` | `SHOULDER_FR` | `MIN_ANGLE` |
+| `doRearRightShoulderStraight()` | `SHOULDER_FR` | `NEUTRAL_ANGLE` |
 
 ---
 
