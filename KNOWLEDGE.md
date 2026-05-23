@@ -10,12 +10,16 @@
 1. [Project Overview](#project-overview)
 2. [Hardware Configuration](#hardware-configuration)
 3. [Servo Mapping](#servo-mapping)
-4. [Robot States](#robot-states)
-5. [LED Helpers](#led-helpers)
-6. [Input Bindings](#input-bindings)
-7. [Code Architecture](#code-architecture)
-8. [Technical Decisions](#technical-decisions)
-9. [Known Issues & Limitations](#known-issues--limitations)
+4. [Angle Constants](#angle-constants)
+5. [Robot States & Actions](#robot-states--actions)
+6. [Gait Functions](#gait-functions)
+7. [Atomic Joint Action Functions](#atomic-joint-action-functions)
+8. [LED Helpers](#led-helpers)
+9. [Input Bindings](#input-bindings)
+10. [Startup Sequence](#startup-sequence)
+11. [Code Architecture](#code-architecture)
+12. [Technical Decisions](#technical-decisions)
+13. [Known Issues & Limitations](#known-issues--limitations)
 
 ---
 
@@ -36,8 +40,8 @@ The main source file is `index.js`. There is no build pipeline — code is writt
 | Microcontroller | BBC micro:bit V2 |
 | Expansion board | Kitronik RobotBit |
 | Servo count | 8 (2 per leg) |
-| Servo type | Standard PWM hobby servo (0–270° range used) |
-| LED | RobotBit onboard NeoPixel RGB (1 pixel) |
+| Servo type | Standard PWM hobby servo |
+| LED | RobotBit onboard NeoPixel RGB (4 pixels, indices 0–3) |
 | Power | Battery via RobotBit power input |
 
 ---
@@ -46,283 +50,158 @@ The main source file is `index.js`. There is no build pipeline — code is writt
 
 The robot has 4 legs. Each leg uses 2 servos: one for the **shoulder** (hip rotation) and one for the **knee** (leg lift/lower).
 
-| Servo ID | Alias | Leg | Joint |
+| Servo ID | Alias const | Leg | Joint |
 |---|---|---|---|
 | S1 | `SHOULDER_FL` | Front-Left | Shoulder |
-| S2 | `KNEE_1` | Front-Left | Knee |
-| S3 | `SHOULDER_RL` | Front-Right | Shoulder |
-| S4 | `KNEE_2` | Front-Right | Knee |
-| S5 | `SHOULDER_3` | Rear-Left | Shoulder |
-| S6 | `KNEE_3` | Rear-Left | Knee |
-| S7 | `SHOULDER_FR` | Rear-Right | Shoulder |
-| S8 | `KNEE_4` | Rear-Right | Knee |
+| S2 | `KNEE_FL` | Front-Left | Knee |
+| S3 | `SHOULDER_RL` | Rear-Left | Shoulder |
+| S4 | `KNEE_RL` | Rear-Left | Knee |
+| S5 | `SHOULDER_RR` | Rear-Right | Shoulder |
+| S6 | `KNEE_RR` | Rear-Right | Knee |
+| S7 | `SHOULDER_FR` | Front-Right | Shoulder |
+| S8 | `KNEE_FR` | Front-Right | Knee |
 
-> **Joint grouping:**
- > - **Shoulders (hip rotation):** SHOULDER_FL, SHOULDER_RL, SHOULDER_3, SHOULDER_FR (S1, S3, S5, S7)
-> - **Knees (leg lift/lower):** KNEE_1, KNEE_2, KNEE_3, KNEE_4 (S2, S4, S6, S8)
+> **Alias consts** are defined at the top of `index.js` (lines 10–17) and must be used in all servo calls instead of raw `robotbit.Servos.Sx` references.
 
-> **Alias consts** are defined at the top of `index.js` (lines 9–16) and must be used in all servo calls instead of raw `robotbit.Servos.Sx` references.
-
-> **Note:** Exact left/right and front/rear assignments should be verified physically. Servo orientation (whether 90° is neutral or another angle) depends on how each servo is mechanically mounted.
+> **Note:** Right-side servos (FR, RR) are mechanically mirrored — their "down" and "forward" directions are opposite in angle to the left-side servos. See [Atomic Joint Action Functions](#atomic-joint-action-functions) for the full angle table.
 
 ---
 
-## Robot States
+## Angle Constants
 
-### `useStateDefault()`
+Defined at the top of `index.js` (lines 3–7):
 
-All shoulders set to `NEUTRAL_ANGLE` (110°). Knees use the same configuration as `useStateStand()`.
+| Constant | Value | Meaning |
+|---|---|---|
+| `MIN_ANGLE` | 10 | Minimum servo angle |
+| `QUARTER_ANGLE` | 55 | 25% of range (~quarter position) |
+| `NEUTRAL_ANGLE` | 110 | Midpoint / neutral resting position |
+| `THREE_QUARTER_ANGLE` | 165 | 75% of range |
+| `MAX_ANGLE` | 210 | Maximum servo angle |
+
+> **Physical range:** Servos operate between 10° and 210°. Do not command angles outside this range to avoid mechanical damage.
+
+---
+
+## Robot States & Actions
+
+### `doReset()`
+
+Sets all 8 servos to `NEUTRAL_ANGLE` (110°). Used as a hard reset/home position. Called on startup and mapped to Button A+B.
+
+| Servo | Angle |
+|---|---|
+| SHOULDER_FL | 110 (NEUTRAL_ANGLE) |
+| KNEE_FL | 110 (NEUTRAL_ANGLE) |
+| SHOULDER_RL | 110 (NEUTRAL_ANGLE) |
+| KNEE_RL | 110 (NEUTRAL_ANGLE) |
+| SHOULDER_RR | 110 (NEUTRAL_ANGLE) |
+| KNEE_RR | 110 (NEUTRAL_ANGLE) |
+| SHOULDER_FR | 110 (NEUTRAL_ANGLE) |
+| KNEE_FR | 110 (NEUTRAL_ANGLE) |
+
+### `doStay()`
+
+Standing/stay pose. Shoulders centred at `NEUTRAL_ANGLE`; knees pushed to their "down" (extended/standing) angles. Mapped to Button B.
 
 | Servo | Angle | Description |
 |---|---|---|
-| S1 (SHOULDER_FL) | NEUTRAL_ANGLE (110) | Front-Left Shoulder |
-| S3 (SHOULDER_RL) | NEUTRAL_ANGLE (110) | Front-Right Shoulder |
-| S5 (SHOULDER_RR) | NEUTRAL_ANGLE (110) | Rear-Left Shoulder |
-| S7 (SHOULDER_FR) | NEUTRAL_ANGLE (110) | Rear-Right Shoulder |
-| S2 (KNEE_FL) | MIN_ANGLE (0) | Front-Left Knee |
-| S4 (KNEE_RL) | MAX_ANGLE (220) | Front-Right Knee |
-| S6 (KNEE_RR) | MIN_ANGLE (0) | Rear-Left Knee |
-| S8 (KNEE_FR) | MAX_ANGLE (220) | Rear-Right Knee |
+| SHOULDER_FL | NEUTRAL_ANGLE (110) | Shoulder centred |
+| SHOULDER_RL | NEUTRAL_ANGLE (110) | Shoulder centred |
+| SHOULDER_RR | NEUTRAL_ANGLE (110) | Shoulder centred |
+| SHOULDER_FR | NEUTRAL_ANGLE (110) | Shoulder centred |
+| KNEE_FL | MIN_ANGLE (10) | Knee down (FL — left-side "down" = MIN) |
+| KNEE_RL | MAX_ANGLE (210) | Knee down (RL — right-side "down" = MAX) |
+| KNEE_RR | MIN_ANGLE (10) | Knee down (RR — left-side "down" = MIN) |
+| KNEE_FR | MAX_ANGLE (210) | Knee down (FR — right-side "down" = MAX) |
 
-### `useStateLie()`
+### `doStand()`
 
-The robot lies flat. Only the shoulder servos (odd IDs: S1, S3, S5, S7) are moved to 110°. Knee servos (even IDs: S2, S4, S6, S8) are intentionally left untouched — they remain at whatever angle they were in previously.
-
-| Servo | Angle | Description |
-|---|---|---|
-| S1 | 110 | Front-Left Shoulder (SHOULDER_FL) |
-| S2 | (unchanged) | Front-Left Knee |
-| S3 | 110 | Front-Right Shoulder |
-| S4 | (unchanged) | Front-Right Knee |
-| S5 | 110 | Rear-Left Shoulder |
-| S6 | (unchanged) | Rear-Left Knee |
-| S7 | 110 | Rear-Right Shoulder (SHOULDER_FR) |
-| S8 | (unchanged) | Rear-Right Knee |
-
-### `useStateStand()`
-
-The robot stands upright. This is the primary/idle state, triggered by Button A.
-
-| Servo | Angle | Description |
-|---|---|---|
-| S1 | 45 | Front-Left Shoulder (SHOULDER_FL) |
-| S2 | 90 | Front-Left Knee |
-| S3 | 135 | Front-Right Shoulder |
-| S4 | 90 | Front-Right Knee |
-| S5 | 225 | Rear-Left Shoulder |
-| S6 | 90 | Rear-Left Knee |
-| S7 | 315 | Rear-Right Shoulder (SHOULDER_FR) |
-| S8 | 90 | Rear-Right Knee |
-
-### `useStateMinus130()`
-
-Sets all servos to -130°. Triggered by Button A.
-
-> **Note:** This state predates the introduction of `MIN_ANGLE`/`MAX_ANGLE` constants. It is preserved for reference only; the active minimum state is now `useStateMinimum()`.
+Sets all knees to their "down" (extended) angles; shoulders are untouched.
 
 | Servo | Angle |
 |---|---|
-| S1 | -130 |
-| S2 | -130 |
-| S3 | -130 |
-| S4 | -130 |
-| S5 | -130 |
-| S6 | -130 |
-| S7 | -130 |
-| S8 | -130 |
+| KNEE_FL | MIN_ANGLE (10) |
+| KNEE_RL | MAX_ANGLE (210) |
+| KNEE_RR | MIN_ANGLE (10) |
+| KNEE_FR | MAX_ANGLE (210) |
 
-### `useState230()`
+### `doLie()`
 
-Sets all servos to 230°. Triggered by Button B.
-
-> **Note:** This state predates the introduction of `MIN_ANGLE`/`MAX_ANGLE` constants. It is preserved for reference only; the active maximum state is now `useStateMaximum()`.
+Sets all knees to `NEUTRAL_ANGLE` (110°) — legs fold to a mid-position, lowering the chassis. Shoulders untouched. Mapped to Button A.
 
 | Servo | Angle |
 |---|---|
-| S1 | 230 |
-| S2 | 230 |
-| S3 | 230 |
-| S4 | 230 |
-| S5 | 230 |
-| S6 | 230 |
-| S7 | 230 |
-| S8 | 230 |
-
-### `useStateCrab()`
-
-Sweeps all 8 servos simultaneously from `MIN_ANGLE` to `MAX_ANGLE` in steps of 10°, pausing 500 ms between each step. Triggered by Button A+B.
-
-| Step | Angle |
-|---|---|
-| 1 | -130° |
-| 2 | -120° |
-| … | … |
-| 37 | 230° |
-
-### `useStateMaximumKnees()`
-
-Sets all knee servos to `MAX_ANGLE`. Shoulders are untouched.
-
-| Servo | Angle |
-|---|---|
-| S2 (KNEE_1) | MAX_ANGLE |
-| S4 (KNEE_2) | MAX_ANGLE |
-| S6 (KNEE_3) | MAX_ANGLE |
-| S8 (KNEE_4) | MAX_ANGLE |
-
-### `useStateMaximumShoulders()`
-
-Sets all shoulder servos to `MAX_ANGLE`. Knees are untouched.
-
-| Servo | Angle |
-|---|---|
-| S1 (SHOULDER_FL) | MAX_ANGLE |
-| S3 (SHOULDER_RL) | MAX_ANGLE |
-| S5 (SHOULDER_3) | MAX_ANGLE |
-| S7 (SHOULDER_FR) | MAX_ANGLE |
-
-### `useStateMinimumKnees()`
-
-Sets all knee servos to `MIN_ANGLE`. Shoulders are untouched.
-
-| Servo | Angle |
-|---|---|
-| S2 (KNEE_1) | MIN_ANGLE |
-| S4 (KNEE_2) | MIN_ANGLE |
-| S6 (KNEE_3) | MIN_ANGLE |
-| S8 (KNEE_4) | MIN_ANGLE |
-
-### `useStateMinimumShoulders()`
-
-Sets all shoulder servos to `MIN_ANGLE`. Knees are untouched.
-
-| Servo | Angle |
-|---|---|
-| S1 (SHOULDER_FL) | MIN_ANGLE |
-| S3 (SHOULDER_RL) | MIN_ANGLE |
-| S5 (SHOULDER_3) | MIN_ANGLE |
-| S7 (SHOULDER_FR) | MIN_ANGLE |
-
-### `useStateReset()`
-
-Resets all servos to 45°. Triggered by Button A and Logo touch. All 8 servos (S1–S8) are set simultaneously to 45° with no pauses — acts as a hard stop/reset for the robot.
-
-| Servo | Angle |
-|---|---|
-| S1 | 45 |
-| S2 | 45 |
-| S3 | 45 |
-| S4 | 45 |
-| S5 | 45 |
-| S6 | 45 |
-| S7 | 45 |
-| S8 | 45 |
+| KNEE_FL | NEUTRAL_ANGLE (110) |
+| KNEE_RL | NEUTRAL_ANGLE (110) |
+| KNEE_RR | NEUTRAL_ANGLE (110) |
+| KNEE_FR | NEUTRAL_ANGLE (110) |
 
 ---
 
-## LED Helpers
+## Gait Functions
 
-RobotBit's NeoPixel is controlled via `robotbit.rgb().showColor(neopixel.hsl(h, s, l))`.
+### `stepForward(step: number)`
 
-| Function | HSL Values | Intended Color | Used For |
-|---|---|---|---|
-| `showGreenLed()` | hsl(120, 74, 1) | Green | (defined, usage TBD) |
-| `showInitLightShow()` | hsl(0, 100, 1) red per pixel | Red scanner (dim) | On-init startup animation |
-| `showRedLed()` | hsl(0, 100, 1) | Red | (defined, usage TBD) |
-| `showYellowLed()` | hsl(120, 74, 1) | Green (mislabeled) | (defined, usage TBD) |
-| `showLegsLed()` | hsl(0, 0, 0) | Off/Black | (defined, usage TBD) |
+Walk gait — one leg at a time, sequential order: BL → FL → BR → FR. Mapped to Logo touch. **Implemented.**
 
-> **Known Issue:** `showYellowLed()` uses the same HSL values as `showGreenLed()` — both produce green, not yellow. Yellow would require approximately `hsl(60, 100, 50)`. This is likely a copy-paste error.
+Each phase has 3 sub-steps (each separated by `step` ms):
+1. Swing knee up + 3 stance shoulders move backward simultaneously
+2. Swing shoulder forward
+3. Swing knee down
 
-> **Note:** `showInitLightShow()` uses `strip.setPixelColor()` / `strip.show()` for individual pixel control, unlike the other helpers which use `showColor()` (sets all pixels at once). The RobotBit NeoPixel strip has 4 pixels (indices 0–3).
+Full order:
+1. Rear-Left (BL): knee up + (FL, BR, FR shoulders backward) → BL shoulder forward → BL knee down
+2. Front-Left (FL): knee up + (BL, BR, FR shoulders backward) → FL shoulder forward → FL knee down
+3. Rear-Right (BR): knee up + (BL, FL, FR shoulders backward) → BR shoulder forward → BR knee down
+4. Front-Right (FR): knee up + (BL, FL, BR shoulders backward) → FR shoulder forward → FR knee down
 
----
+While one leg swings, the other three planted shoulders move backward in unison to push the chassis forward.
 
-## Input Bindings
+### `stepForwardV1(speed: number)`
 
-| Input | Action |
-|---|---|
-| A | `useStateMinus130()` — all servos to -130° |
-| B | `useState230()` — all servos to 230° |
-| A+B | `useStateCrab()` — sweep all servos -130°→230° in 10° steps, 500 ms pause each |
-| Logo (touch) | `useStateReset()` — all servos to 45°, hard reset |
+Diagonal pair gait — moves two diagonal legs (FL+RR, then FR+RL) in sequence.
 
----
+**Phase 1 — FL + RR:**
+1. FL knee to NEUTRAL, RR knee to NEUTRAL → pause
+2. FL shoulder to NEUTRAL, RR shoulder to MAX → pause
+3. FL knee to MIN, RR knee to MIN → pause
+4. FL shoulder to MAX, RR shoulder to NEUTRAL → pause
 
-## Code Architecture
+**Phase 2 — FR + RL:**
+1. FR knee to NEUTRAL, RL knee to NEUTRAL → pause
+2. FR shoulder to NEUTRAL, RL shoulder to MIN → pause
+3. FR knee to MAX, RL knee to MAX → pause
+4. FR shoulder to MIN, RL shoulder to NEUTRAL → pause
 
-```
-index.js
-├── const MIN_ANGLE = 0                — minimum angle for all servos
-├── const MAX_ANGLE = 220              — maximum angle for all servos
-├── const NEUTRAL_ANGLE = 110          — midpoint/neutral resting angle for all servos
-├── const SHOULDER_FL = robotbit.Servos.S1  — Front-Left  Shoulder alias
-├── const KNEE_1     = robotbit.Servos.S2  — Front-Left  Knee alias
-├── const SHOULDER_RL = robotbit.Servos.S3  — Front-Right Shoulder alias
-├── const KNEE_2     = robotbit.Servos.S4  — Front-Right Knee alias
-├── const SHOULDER_3 = robotbit.Servos.S5  — Rear-Left   Shoulder alias
-├── const KNEE_3     = robotbit.Servos.S6  — Rear-Left   Knee alias
-├── const SHOULDER_FR = robotbit.Servos.S7  — Rear-Right  Shoulder alias
-├── const KNEE_4     = robotbit.Servos.S8  — Rear-Right  Knee alias
-├── let initialized = false            — guard flag to prevent double startup animation
-├── if (!initialized) → showInitLightShow()  — called once on startup
-│
-├── input.onButtonPressed(Button.A)   → useStateMinus130()
-├── input.onButtonPressed(Button.B)   → useState230()
-├── input.onButtonPressed(Button.AB)  → useStateCrab()
-├── input.onLogoEvent(Pressed)        → useStateReset()
-│
-├── useState230()                     — all 8 servos to 230°
-├── useStateCrab()                    — sweep all 8 servos MIN→MAX in 10° steps, 500ms pause
-├── useStateDefault()                 — shoulders to NEUTRAL_ANGLE; knees same as useStateStand()
-├── useStateLie()                     — shoulders (S1,S3,S5,S7) to 110°; knees untouched
-├── useStateMaximum()                 — all 8 servos to SHOULDER/KNEE_MAX_ANGLE
-├── useStateMaximumKnees()            — knees (S2,S4,S6,S8) to KNEE_MAX_ANGLE
-├── useStateMaximumShoulders()        — shoulders (S1,S3,S5,S7) to SHOULDER_MAX_ANGLE
-├── useStateMinus130()                — all 8 servos to -130°
-├── useStateMinimum()                 — all 8 servos to SHOULDER/KNEE_MIN_ANGLE
-├── useStateMinimumKnees()            — knees (S2,S4,S6,S8) to KNEE_MIN_ANGLE
-├── useStateMinimumShoulders()        — shoulders (S1,S3,S5,S7) to SHOULDER_MIN_ANGLE
-├── useStateReset()                   — all 8 servos to 45° (hard reset)
-├── useStateStand()                   — 8 servo calls for standing pose
-│
-├── doFrontLeftKneeDown/Straight/Up() — atomic knee actions, Front-Left leg
-├── doFrontLeftShoulderBack/Forward/Straight() — atomic shoulder actions, Front-Left leg
-├── doFrontRightKneeDown/Straight/Up() — atomic knee actions, Front-Right leg
-├── doFrontRightShoulderBack/Forward/Straight() — atomic shoulder actions, Front-Right leg
-├── doRearLeftKneeDown/Straight/Up()  — atomic knee actions, Rear-Left leg
-├── doRearLeftShoulderBack/Forward/Straight() — atomic shoulder actions, Rear-Left leg
-├── doRearRightKneeDown/Straight/Up() — atomic knee actions, Rear-Right leg
-├── doRearRightShoulderBack/Forward/Straight() — atomic shoulder actions, Rear-Right leg
-│
-├── showGreenLed()                    — NeoPixel green
-├── showInitLightShow()               — red scanner across pixels 0→3 on startup
-├── showLegsLed()                     — NeoPixel off
-├── showRedLed()                      — NeoPixel red
-├── showYellowLed()                   — NeoPixel (mislabeled, actually green)
-│
-└── basic.forever()                   — empty (reserved for future sensor/animation logic)
-```
+### `stepForwardV2(speed: number)`
 
-**Key invariants:**
-- All state functions are named `useState<StateName>()`.
-- State functions contain only servo angle assignments — no logic or conditionals.
-- `basic.forever()` is intentionally empty; reserved for gait loops or sensor polling.
-- Button A+B is intentionally empty; reserved for future combined actions.
-- **All functions must be placed at the bottom of the file, ordered alphabetically (A to Z) by function name.**
+Diagonal pair gait — alternative ordering (starts with RL+FR, then FL+RR).
+
+**Phase 1 — RL + FR:**
+1. RL knee to NEUTRAL, FR knee to NEUTRAL → pause
+2. RL shoulder to MIN, FR shoulder to NEUTRAL → pause
+3. RL knee to MAX, FR knee to MAX → pause
+4. RL shoulder to NEUTRAL, FR shoulder to MIN → pause
+
+**Phase 2 — FL + RR:**
+1. FL knee to NEUTRAL, RR knee to NEUTRAL → pause
+2. FL shoulder to NEUTRAL, RR shoulder to MAX → pause
+3. FL knee to MIN, RR knee to MIN → pause
+4. FL shoulder to MAX, RR shoulder to NEUTRAL → pause
 
 ---
 
 ## Atomic Joint Action Functions
 
-These 24 single-servo helper functions are the building blocks for gait sequences. Each sets exactly one servo to the appropriate angle for the named action.
+24 single-servo helper functions — the building blocks for gait sequences. Each sets exactly one servo to the angle appropriate for the named action.
 
 ### Angle semantics
 
-| Side | Knee down (standing) | Knee up (lifted) | Shoulder forward | Shoulder back |
+| Side | Knee down (standing) | Knee up (lifted) | Shoulder forward | Shoulder backward |
 |---|---|---|---|---|
-| FL / RR (left side) | `MIN_ANGLE` (0) | `MAX_ANGLE` (220) | `MAX_ANGLE` (220) | `MIN_ANGLE` (0) |
-| FR / RL (right side) | `MAX_ANGLE` (220) | `MIN_ANGLE` (0) | `MIN_ANGLE` (0) | `MAX_ANGLE` (220) |
+| FL / RR (left-side mounting) | `MIN_ANGLE` (10) | `MAX_ANGLE` (210) | `MIN_ANGLE` (10) | `MAX_ANGLE` (210) |
+| FR / RL (right-side mounting) | `MAX_ANGLE` (210) | `MIN_ANGLE` (10) | `MAX_ANGLE` (210) | `MIN_ANGLE` (10) |
 
 Straight / neutral for all joints = `NEUTRAL_ANGLE` (110).
 
@@ -330,35 +209,141 @@ Straight / neutral for all joints = `NEUTRAL_ANGLE` (110).
 
 | Function | Servo | Angle |
 |---|---|---|
-| `doFrontLeftKneeDown()` | `KNEE_FL` | `MIN_ANGLE` |
-| `doFrontLeftKneeStraight()` | `KNEE_FL` | `NEUTRAL_ANGLE` |
-| `doFrontLeftKneeUp()` | `KNEE_FL` | `MAX_ANGLE` |
-| `doFrontRightKneeDown()` | `KNEE_RL` | `MAX_ANGLE` |
-| `doFrontRightKneeStraight()` | `KNEE_RL` | `NEUTRAL_ANGLE` |
-| `doFrontRightKneeUp()` | `KNEE_RL` | `MIN_ANGLE` |
-| `doRearLeftKneeDown()` | `KNEE_RR` | `MIN_ANGLE` |
-| `doRearLeftKneeStraight()` | `KNEE_RR` | `NEUTRAL_ANGLE` |
-| `doRearLeftKneeUp()` | `KNEE_RR` | `MAX_ANGLE` |
-| `doRearRightKneeDown()` | `KNEE_FR` | `MAX_ANGLE` |
-| `doRearRightKneeStraight()` | `KNEE_FR` | `NEUTRAL_ANGLE` |
-| `doRearRightKneeUp()` | `KNEE_FR` | `MIN_ANGLE` |
+| `doFrontLeftKneeUp()` | `KNEE_FL` | `MAX_ANGLE` (210) |
+| `doFrontLeftKneeStraight()` | `KNEE_FL` | `NEUTRAL_ANGLE` (110) |
+| `doFrontLeftKneeDown()` | `KNEE_FL` | `MIN_ANGLE` (10) |
+| `doRearLeftKneeUp()` | `KNEE_RL` | `MIN_ANGLE` (10) |
+| `doRearLeftKneeStraight()` | `KNEE_RL` | `NEUTRAL_ANGLE` (110) |
+| `doRearLeftKneeDown()` | `KNEE_RL` | `MAX_ANGLE` (210) |
+| `doRearRightKneeUp()` | `KNEE_RR` | `MAX_ANGLE` (210) |
+| `doRearRightKneeStraight()` | `KNEE_RR` | `NEUTRAL_ANGLE` (110) |
+| `doRearRightKneeDown()` | `KNEE_RR` | `MIN_ANGLE` (10) |
+| `doFrontRightKneeUp()` | `KNEE_FR` | `MIN_ANGLE` (10) |
+| `doFrontRightKneeStraight()` | `KNEE_FR` | `NEUTRAL_ANGLE` (110) |
+| `doFrontRightKneeDown()` | `KNEE_FR` | `MAX_ANGLE` (210) |
 
 ### Shoulder functions
 
 | Function | Servo | Angle |
 |---|---|---|
-| `doFrontLeftShoulderBack()` | `SHOULDER_FL` | `MIN_ANGLE` |
-| `doFrontLeftShoulderForward()` | `SHOULDER_FL` | `MAX_ANGLE` |
-| `doFrontLeftShoulderStraight()` | `SHOULDER_FL` | `NEUTRAL_ANGLE` |
-| `doFrontRightShoulderBack()` | `SHOULDER_RL` | `MAX_ANGLE` |
-| `doFrontRightShoulderForward()` | `SHOULDER_RL` | `MIN_ANGLE` |
-| `doFrontRightShoulderStraight()` | `SHOULDER_RL` | `NEUTRAL_ANGLE` |
-| `doRearLeftShoulderBack()` | `SHOULDER_RR` | `MIN_ANGLE` |
-| `doRearLeftShoulderForward()` | `SHOULDER_RR` | `MAX_ANGLE` |
-| `doRearLeftShoulderStraight()` | `SHOULDER_RR` | `NEUTRAL_ANGLE` |
-| `doRearRightShoulderBack()` | `SHOULDER_FR` | `MAX_ANGLE` |
-| `doRearRightShoulderForward()` | `SHOULDER_FR` | `MIN_ANGLE` |
-| `doRearRightShoulderStraight()` | `SHOULDER_FR` | `NEUTRAL_ANGLE` |
+| `doFrontLeftShoulderForward()` | `SHOULDER_FL` | `MIN_ANGLE` (10) |
+| `doFrontLeftShoulderStraight()` | `SHOULDER_FL` | `NEUTRAL_ANGLE` (110) |
+| `doFrontLeftShoulderBackward()` | `SHOULDER_FL` | `MAX_ANGLE` (210) |
+| `doRearLeftShoulderForward()` | `SHOULDER_RL` | `MIN_ANGLE` (10) |
+| `doRearLeftShoulderStraight()` | `SHOULDER_RL` | `NEUTRAL_ANGLE` (110) |
+| `doRearLeftShoulderBackward()` | `SHOULDER_RL` | `MAX_ANGLE` (210) |
+| `doRearRightShoulderForward()` | `SHOULDER_RR` | `MAX_ANGLE` (210) |
+| `doRearRightShoulderStraight()` | `SHOULDER_RR` | `NEUTRAL_ANGLE` (110) |
+| `doRearRightShoulderBackward()` | `SHOULDER_RR` | `MIN_ANGLE` (10) |
+| `doFrontRightShoulderForward()` | `SHOULDER_FR` | `MAX_ANGLE` (210) |
+| `doFrontRightShoulderStraight()` | `SHOULDER_FR` | `NEUTRAL_ANGLE` (110) |
+| `doFrontRightShoulderBackward()` | `SHOULDER_FR` | `MIN_ANGLE` (10) |
+
+---
+
+## LED Helpers
+
+RobotBit's NeoPixel is controlled via `robotbit.rgb().showColor(neopixel.hsl(h, s, l))`.
+
+| Function | HSL Values | Actual Color | Notes |
+|---|---|---|---|
+| `showGreenLed()` | hsl(120, 74, 1) | Green (dim) | Defined, not called from any handler |
+| `showInitLightShow()` | hsl(0, 100, 1) red per pixel | Red scanner | Called once on startup |
+| `showRedLed()` | hsl(0, 100, 1) | Red (dim) | Defined, not called from any handler |
+| `showYellowLed()` | hsl(120, 74, 1) | Green (mislabeled) | Same HSL as showGreenLed — bug |
+| `showLegsLed()` | hsl(0, 0, 0) | Off/Black | Defined, not called from any handler |
+
+> **Known Issue:** `showYellowLed()` uses the same HSL values as `showGreenLed()` — both produce green, not yellow. Yellow requires approximately `hsl(60, 100, 50)`. This is a copy-paste error.
+
+> **Note:** `showInitLightShow()` uses `strip.setPixelColor()` / `strip.show()` for per-pixel animation (0→1→2→3→off). The RobotBit NeoPixel strip has 4 pixels (indices 0–3).
+
+---
+
+## Input Bindings
+
+| Input | Action |
+|---|---|
+| A | `doLie()` — all knees to NEUTRAL_ANGLE |
+| B | `doStay()` — shoulders centred, knees extended (standing) |
+| A+B | `doReset()` — all 8 servos to NEUTRAL_ANGLE |
+| Logo (touch) | `stepForward(200)` — walk gait stub (currently empty) |
+
+---
+
+## Startup Sequence
+
+Executed once at the top of `index.js` on boot (lines 19–36):
+
+1. `showInitLightShow()` — red LED scanner animation
+2. `doReset()` — all servos to NEUTRAL_ANGLE (110°)
+3. Front-Left knee: up (500ms pause) → down (500ms) → straight (500ms)
+4. Rear-Left knee: up (500ms) → down (500ms) → straight (500ms)
+5. Rear-Right knee: up (500ms) → down (500ms) → straight (500ms)
+6. Front-Right knee: up (500ms) → down (500ms) → straight (500ms)
+
+This sequence verifies that all four knees are functional on every boot. No `initialized` guard is present — `basic.forever()` is empty, so double-play is not a concern.
+
+---
+
+## Code Architecture
+
+```
+index.js
+├── const MIN_ANGLE = 10               — minimum servo angle
+├── const QUARTER_ANGLE = 55            — quarter-range angle
+├── const NEUTRAL_ANGLE = 110          — midpoint / neutral angle
+├── const THREE_QUARTER_ANGLE = 165    — three-quarter-range angle
+├── const MAX_ANGLE = 210              — maximum servo angle
+├── const SHOULDER_FL = S1             — Front-Left  Shoulder alias
+├── const KNEE_FL     = S2             — Front-Left  Knee alias
+├── const SHOULDER_RL = S3             — Rear-Left   Shoulder alias
+├── const KNEE_RL     = S4             — Rear-Left   Knee alias
+├── const SHOULDER_RR = S5             — Rear-Right  Shoulder alias
+├── const KNEE_RR     = S6             — Rear-Right  Knee alias
+├── const SHOULDER_FR = S7             — Front-Right Shoulder alias
+├── const KNEE_FR     = S8             — Front-Right Knee alias
+│
+├── showInitLightShow()                — startup LED animation
+├── doReset()                          — all servos to NEUTRAL
+├── <knee up/down/straight boot check per leg>
+│
+├── input.onLogoEvent(Pressed)         → stepForward(200)
+├── input.onButtonPressed(Button.A)    → doLie()
+├── input.onButtonPressed(Button.AB)   → doReset()
+├── input.onButtonPressed(Button.B)    → doStay()
+│
+├── basic.forever()                    — empty (reserved)
+│
+├── showInitLightShow()                — red pixel scanner
+├── doStay()                           — shoulders centred, knees extended
+├── stepForward(step)                  — walk gait (BL→FL→BR→FR, one leg at a time)
+├── stepForwardV2(speed)               — diagonal pair gait v2
+├── stepForwardV1(speed)               — diagonal pair gait v1
+│
+├── doFrontLeft/RearLeft/RearRight/FrontRight ShoulderForward/Straight/Backward()
+├── doFrontLeft/RearLeft/RearRight/FrontRight KneeUp/Straight/Down()
+│
+├── doStand()                          — knees to extended angles, shoulders untouched
+├── doLie()                            — all knees to NEUTRAL
+├── doReset()                          — all 8 servos to NEUTRAL
+│
+├── showGreenLed()                     — NeoPixel green (dim)
+├── showLegsLed()                      — NeoPixel off
+├── showRedLed()                       — NeoPixel red (dim)
+├── showYellowLed()                    — NeoPixel (mislabeled, actually green)
+│
+├── useStateMaximumKnees()             — all knees to MAX_ANGLE
+├── useStateMaximumShoulders()         — all shoulders to MAX_ANGLE
+├── useStateMinimumKnees()             — all knees to MIN_ANGLE
+└── useStateMinimumShoulders()         — all shoulders to MIN_ANGLE
+```
+
+**Key invariants:**
+- Primary action functions use the `do<Action>()` naming pattern.
+- `useState*` helpers remain for max/min bulk-set operations.
+- All atomic joint functions follow `do<Leg><Joint><Direction>()` naming.
+- `basic.forever()` is intentionally empty; reserved for gait loops or sensor polling.
+- Shoulder "Back" direction is named **Backward** in the code (not "Back").
 
 ---
 
@@ -368,16 +353,28 @@ Straight / neutral for all joints = `NEUTRAL_ANGLE` (110).
 MakeCode JS was chosen for RobotBit compatibility and broad beginner tooling support (block ↔ JS toggle in the editor).
 
 ### `robotbit` extension API
-All servo and LED calls go through the `robotbit` namespace. This is the standard Kitronik RobotBit MakeCode extension. Servo angles are passed as integers in degrees.
+All servo and LED calls go through the `robotbit` namespace. Servo angles are passed as integers in degrees.
 
-### Servo angle range
-RobotBit supports 0–270° range on its servo outputs. The current states use angles within 0–315°. Care should be taken not to exceed physical servo limits — exceeding mechanical range can damage servos.
+### Servo angle range clamped to 10–210°
+Previous range was documented as 0–220°. Current constants clamp to `MIN_ANGLE=10` / `MAX_ANGLE=210` to avoid servo strain at mechanical extremes.
+
+### `QUARTER_ANGLE` and `THREE_QUARTER_ANGLE` added
+Two intermediate angle constants (55° and 165°) are defined for use in future smooth motion sequences. Not yet used by any function.
+
+### `do*` naming over `useState*`
+The primary robot action functions were renamed from `useState<Name>()` to `do<Action>()` for clearer imperative semantics. Some `useState*` bulk-set helpers remain for max/min operations.
+
+### Boot self-test sequence
+On startup, each knee runs up→down→straight after `doReset()`. This confirms all four knee servos are responsive before user input is accepted. 500 ms pauses between steps.
+
+### No initialized guard
+The previous `initialized` boolean guard was removed. Since `basic.forever()` is empty, the startup block does not risk double-execution.
 
 ### State functions (no state machine)
-Currently there is no formal state machine or state variable. Each button directly calls a state function. If more states are added, consider tracking the active state with a variable to enable transitions or guards.
+No formal state machine or state variable exists. Each button directly calls an action function. If more states are added, consider tracking the active state with a variable.
 
-### LED helpers not yet wired to states
-`showGreenLed`, `showRedLed`, etc. are defined but not called from state functions. Future work should call these from within state functions to give visual feedback of the current state.
+### LED helpers not wired to states
+`showGreenLed`, `showRedLed`, etc. are defined but not called from any action or button handler. Future work should call these to give visual feedback of the current state.
 
 ---
 
@@ -385,18 +382,18 @@ Currently there is no formal state machine or state variable. Each button direct
 
 1. **`showYellowLed()` produces green, not yellow.** HSL(120, 74, 1) is green. Yellow requires approx. HSL(60, 100, 50). Fix when LED state feedback is wired up.
 
-2. **LED helpers are unused.** None of the LED helper functions are called from button handlers or state functions. No visual feedback is currently active.
+2. **LED helpers are unused.** None of the LED helper functions (except `showInitLightShow`) are called. No visual feedback is currently active during operation.
 
-3. **Button A+B triggers `useStateCrab()`** — sweeps all servos -130°→230° in 10° steps with 500 ms pauses (~37 s total).
+3. **`stepForward()` is implemented.** Walk gait (one leg at a time, BL→FL→BR→FR) with simultaneous stance-phase shoulder push. Triggered by Logo touch at 200 ms per sub-step.
 
-4. **`basic.forever()` is empty.** Reserved for gait animation or sensor polling. No walking gait is implemented yet.
+4. **`stepForwardV1` and `stepForwardV2` are not triggered by any button.** They exist as experiments/drafts but have no input binding.
 
-5. **No walking/gait states.** Only two static poses exist (stand, transport). A walking gait requires a timed sequence of servo positions — not yet implemented.
+5. **`basic.forever()` is empty.** Reserved for gait animation or sensor polling.
 
-6. **No sensor integration.** The micro:bit's accelerometer, compass, or distance sensors are not used. The robot cannot detect obstacles or orientation.
+6. **No sensor integration.** The micro:bit's accelerometer, compass, or distance sensors are not used.
 
-7. **Servo angles not validated against physical limits.** S7 is set to 315° in `useStateStand()`. If the physical servo only supports 0–270°, this may cause servo strain. Verify on hardware.
+7. **`QUARTER_ANGLE` and `THREE_QUARTER_ANGLE` are unused.** Defined but not referenced by any function yet.
 
 8. **No error handling.** MakeCode JS does not surface servo driver errors. If the RobotBit is not powered separately, servos may not respond without any indication.
 
-9. **`showInitLightShow()` double-play.** MakeCode's runtime (with `basic.forever` present) can re-enter the top-level "on start" block in some runtime versions, causing the startup animation to play twice. Fixed by guarding the call with an `initialized` boolean flag.
+9. **`doStand()` is defined but has no input binding.** It sets knees to extended angles but is never called by a button handler.
