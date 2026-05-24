@@ -11,15 +11,17 @@
 2. [Hardware Configuration](#hardware-configuration)
 3. [Servo Mapping](#servo-mapping)
 4. [Angle Constants](#angle-constants)
-5. [Robot States & Actions](#robot-states--actions)
-6. [Gait Functions](#gait-functions)
-7. [Atomic Joint Action Functions](#atomic-joint-action-functions)
-8. [LED Helpers](#led-helpers)
-9. [Input Bindings](#input-bindings)
-10. [Startup Sequence](#startup-sequence)
-11. [Code Architecture](#code-architecture)
-12. [Technical Decisions](#technical-decisions)
-13. [Known Issues & Limitations](#known-issues--limitations)
+5. [Sonar Distance Constants](#sonar-distance-constants)
+6. [Colour Constants](#colour-constants)
+7. [Robot States & Actions](#robot-states--actions)
+8. [Gait Functions](#gait-functions)
+9. [Atomic Joint Action Functions](#atomic-joint-action-functions)
+10. [LED Helpers](#led-helpers)
+11. [Input Bindings](#input-bindings)
+12. [Startup Sequence](#startup-sequence)
+13. [Code Architecture](#code-architecture)
+14. [Technical Decisions](#technical-decisions)
+15. [Known Issues & Limitations](#known-issues--limitations)
 
 ---
 
@@ -80,6 +82,33 @@ Defined at the top of `index.js` (lines 3–7):
 | `MAX_ANGLE` | 210 | Maximum servo angle |
 
 > **Physical range:** Servos operate between 10° and 210°. Do not command angles outside this range to avoid mechanical damage.
+
+---
+
+## Sonar Distance Constants
+
+Defined in `index.js` after the angle constants:
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `SONAR_NO_ECHO` | 0 | `sonar.ping()` return value when no echo received (out of range / no object) |
+| `SONAR_OBSTACLE_THRESHOLD` | 20 | Distance (cm) above which the path is considered clear (LED green); at or below → LED red |
+
+Used in `basic.forever()` and `showObstacleLed()`.
+
+---
+
+## Colour Constants
+
+Defined in `index.js` after the sonar constants. All are precomputed NeoPixel HSL colour values:
+
+| Constant | HSL | Colour | Usage |
+|---|---|---|---|
+| `COLOR_OFF` | hsl(0, 0, 0) | Off / black | Pixel off state |
+| `COLOR_RED` | hsl(0, 100, 1) | Red (dim) | Init light show, `showRedLed()` |
+| `COLOR_GREEN` | hsl(120, 74, 1) | Green (dim) | `showGreenLed()`, `showYellowLed()`, obstacle LED clear zone |
+
+> **Note:** `COLOR_GREEN_DIM` is used by both `showGreenLed()` and `showYellowLed()` — `showYellowLed()` is still mislabeled (produces green, not yellow).
 
 ---
 
@@ -252,6 +281,7 @@ RobotBit's NeoPixel is controlled via `robotbit.rgb().showColor(neopixel.hsl(h, 
 | `showRedLed()` | hsl(0, 100, 1) | Red (dim) | Defined, not called from any handler |
 | `showYellowLed()` | hsl(120, 74, 1) | Green (mislabeled) | Same HSL as showGreenLed — bug |
 | `showLegsLed()` | hsl(0, 0, 0) | Off/Black | Defined, not called from any handler |
+| `showObstacleLed(distance)` | pixel 0 only | Off / Green / Red | distance=0 → off; >20 → green hsl(120,74,1); ≤20 → red hsl(0,100,1) |
 
 > **Known Issue:** `showYellowLed()` uses the same HSL values as `showGreenLed()` — both produce green, not yellow. Yellow requires approximately `hsl(60, 100, 50)`. This is a copy-paste error.
 
@@ -294,6 +324,11 @@ index.js
 ├── const NEUTRAL_ANGLE = 110          — midpoint / neutral angle
 ├── const THREE_QUARTER_ANGLE = 165    — three-quarter-range angle
 ├── const MAX_ANGLE = 210              — maximum servo angle
+├── const SONAR_NO_ECHO = 0            — sonar.ping() sentinel: no echo received
+├── const SONAR_OBSTACLE_THRESHOLD = 20 — distance above which path is clear (LED green); at/below → red
+├── const COLOR_OFF                    — NeoPixel off (hsl 0,0,0)
+├── const COLOR_RED                    — NeoPixel red dim (hsl 0,100,1)
+├── const COLOR_GREEN                  — NeoPixel green dim (hsl 120,74,1)
 ├── const SHOULDER_FL = S1             — Front-Left  Shoulder alias
 ├── const KNEE_FL     = S2             — Front-Left  Knee alias
 ├── const SHOULDER_RL = S3             — Rear-Left   Shoulder alias
@@ -312,7 +347,7 @@ index.js
 ├── input.onButtonPressed(Button.AB)   → doReset()
 ├── input.onButtonPressed(Button.B)    → doStay()
 │
-├── basic.forever()                    — empty (reserved)
+├── basic.forever()                    — sonar obstacle loop: reads distance, calls showObstacleLed(distance) on pixel 0, steps forward if distance=0 or >20 cm, else doReset()+doStay()
 │
 ├── showInitLightShow()                — red pixel scanner
 ├── doStay()                           — shoulders centred, knees extended
@@ -327,6 +362,7 @@ index.js
 ├── doLie()                            — all knees to NEUTRAL
 ├── doReset()                          — all 8 servos to NEUTRAL
 │
+├── showObstacleLed(distance)          — NeoPixel pixel 0: off (dist=0), green (dist>20), red (dist≤20)
 ├── showGreenLed()                     — NeoPixel green (dim)
 ├── showLegsLed()                      — NeoPixel off
 ├── showRedLed()                       — NeoPixel red (dim)
@@ -388,9 +424,11 @@ No formal state machine or state variable exists. Each button directly calls an 
 
 4. **`stepForwardV1` and `stepForwardV2` are not triggered by any button.** They exist as experiments/drafts but have no input binding.
 
-5. **`basic.forever()` is empty.** Reserved for gait animation or sensor polling.
+5. **`basic.forever()` runs sonar-driven walk loop.** Each iteration reads the ultrasonic sensor on P1/P2. It calls `showObstacleLed(distance)` to update pixel 0. If distance = 0 (no echo / out of range) or distance > 10 cm, the robot calls `doStepForward(200)`; otherwise it calls `doReset()` + `doStay()` to stop.
 
-6. **No sensor integration.** The micro:bit's accelerometer, compass, or distance sensors are not used.
+6. **Sonar integration active.** HC-SR04-compatible sensor is connected: Trigger → P1, Echo → P2. Distance is read via `sonar.ping()` in Centimeters. A return value of `0` is treated as "no obstacle" (out of range).
+
+  10. **`showObstacleLed(distance)` is active.** Called every `basic.forever()` iteration. Controls NeoPixel pixel 0 only: off when `distance === 0`; solid green (`hsl(120,74,1)`) when `distance > 20`; solid red (`hsl(0,100,1)`) when `distance ≤ 20`. Uses `setPixelColor` + `show` to avoid overwriting pixels 1–3.
 
 7. **`QUARTER_ANGLE` and `THREE_QUARTER_ANGLE` are unused.** Defined but not referenced by any function yet.
 

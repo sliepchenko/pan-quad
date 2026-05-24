@@ -6,6 +6,17 @@ const NEUTRAL_ANGLE = 110
 const THREE_QUARTER_ANGLE = 165
 const MAX_ANGLE = 210
 
+// SONAR DISTANCE CONSTANTS (centimetres)
+// SONAR_OBSTACLE_THRESHOLD — distance above which the path is clear (LED green); at or below → LED red
+const SONAR_OBSTACLE_SEE = 50
+const SONAR_OBSTACLE_AVOID = 30
+
+// COLOUR CONSTANTS — HSL values used for the NeoPixel LED strip
+// _DIM variants are used for status-only indicators (low brightness); _BRIGHT for the obstacle LED
+const COLOR_OFF = neopixel.hsl(0, 0, 0)
+const COLOR_RED = neopixel.hsl(0, 100, 1)
+const COLOR_GREEN = neopixel.hsl(120, 100, 1)
+
 // SERVO ALIASES — map semantic names to RobotBit servo IDs
 const SHOULDER_FL = robotbit.Servos.S1  // Front-Left   Shoulder
 const KNEE_FL = robotbit.Servos.S2  // Front-Left   Knee
@@ -16,18 +27,13 @@ const KNEE_RR = robotbit.Servos.S6  // Rear-Right   Knee
 const SHOULDER_FR = robotbit.Servos.S7  // Front-Right  Shoulder
 const KNEE_FR = robotbit.Servos.S8  // Front-Right  Knee
 
-showInitLightShow();
-doReset();
-doStand();
+let busy = false;
+let distance = 0;
 
-basic.pause(200);
-doStepForward(200);
-doStepForward(200);
-doStepForward(200);
-doStepForward(200);
+showInitLightShow();
 
 input.onLogoEvent(TouchButtonEvent.Pressed, function () {
-  doStepForward(500)
+  doStepForward(200)
 })
 input.onButtonPressed(Button.A, function () {
   doLie()
@@ -39,14 +45,35 @@ input.onButtonPressed(Button.B, function () {
   doStay()
 })
 
-basic.forever(function () {
+while (true) {
+  distance = Math.floor((distance * 2 + sonar.ping(
+    DigitalPin.P1,
+    DigitalPin.P2,
+    PingUnit.Centimeters
+  )) / 3);
 
-})
+  showObstacleLed(distance)
+
+  if (!busy) {
+    busy = true;
+
+    if (distance > SONAR_OBSTACLE_AVOID) {
+      doStepForward(200)
+    } else {
+      doReset();
+      doStay()
+    }
+
+    basic.pause(400);
+    busy = false;
+  }
+}
 
 function showInitLightShow() {
   let strip = robotbit.rgb()
-  let red = neopixel.hsl(0, 100, 1)
-  let off = 0
+  let red = COLOR_RED
+  let off = COLOR_OFF
+
   // [0]
   strip.setPixelColor(0, red)
   strip.show()
@@ -170,16 +197,34 @@ function doReset() {
 }
 
 function showGreenLed() {
-  robotbit.rgb().showColor(neopixel.hsl(120, 74, 1))
+  robotbit.rgb().showColor(COLOR_GREEN)
 }
 function showLegsLed() {
-  robotbit.rgb().showColor(neopixel.hsl(0, 0, 0))
+  robotbit.rgb().showColor(COLOR_OFF)
 }
 function showRedLed() {
-  robotbit.rgb().showColor(neopixel.hsl(0, 100, 1))
+  robotbit.rgb().showColor(COLOR_RED)
 }
 function showYellowLed() {
-  robotbit.rgb().showColor(neopixel.hsl(120, 74, 1))
+  robotbit.rgb().showColor(COLOR_GREEN)
+}
+
+// Diode 0: obstacle distance indicator
+//   distance = 0         → off (no obstacle / out of range)
+//   distance > threshold → green (path clear)
+//   distance ≤ threshold → red (obstacle detected)
+function showObstacleLed(distance: number) {
+  let strip = robotbit.rgb()
+
+  if (distance <= 0 || distance > SONAR_OBSTACLE_SEE) {
+    strip.setPixelColor(0, COLOR_OFF)
+  } else if (distance > SONAR_OBSTACLE_AVOID) {
+    strip.setPixelColor(0, COLOR_GREEN)
+  } else {
+    strip.setPixelColor(0, COLOR_RED)
+  }
+
+  strip.show()
 }
 
 function useStateMaximumKnees() {
