@@ -187,6 +187,24 @@ Full order:
 
 While one leg swings, the other three planted shoulders move backward in unison to push the chassis forward.
 
+### `doTurnRight(step: number)`
+
+Turn-right gait — diagonal pair structure, same timing as `doStepForward`. Left-side legs push forward while right-side legs push backward, rotating the chassis clockwise.
+
+**Phase 1 — FR + RL:**
+1. FR knee to NEUTRAL, RL knee to NEUTRAL → pause
+2. FR shoulder **backward**, RL shoulder **forward** → pause
+3. FR knee down, RL knee down → pause
+4. FR shoulder straight, RL shoulder straight
+
+**Phase 2 — FL + RR:**
+1. FL knee to NEUTRAL, RR knee to NEUTRAL → pause
+2. FL shoulder **forward**, RR shoulder **backward** → pause
+3. FL knee down, RR knee down → pause
+4. FL shoulder straight, RR shoulder straight
+
+Not yet bound to any input.
+
 ### `stepForwardV1(speed: number)`
 
 Diagonal pair gait — moves two diagonal legs (FL+RR, then FR+RL) in sequence.
@@ -352,6 +370,7 @@ index.js
 ├── showInitLightShow()                — red pixel scanner
 ├── doStay()                           — shoulders centred, knees extended
 ├── stepForward(step)                  — walk gait (BL→FL→BR→FR, one leg at a time)
+├── doTurnRight(step)                  — turn-right gait (diagonal pairs, left fwd / right back)
 ├── stepForwardV2(speed)               — diagonal pair gait v2
 ├── stepForwardV1(speed)               — diagonal pair gait v1
 │

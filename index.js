@@ -134,6 +134,26 @@ function doStepForward(step: number) {
   doFrontLeftShoulderBackward(); doRearRightShoulderStraight();
 }
 
+function doTurnRight(step: number) {
+  // Pair 1: FR + RL — FR swings backward, RL swings forward
+  doFrontRightKneeStraight(); doRearLeftKneeStraight();
+  basic.pause(step / 2);
+  doFrontRightShoulderBackward(); doRearLeftShoulderForward();
+  basic.pause(step / 2);
+  doFrontRightKneeDown(); doRearLeftKneeDown();
+  basic.pause(step / 2);
+  doFrontRightShoulderStraight(); doRearLeftShoulderStraight();
+
+  // Pair 2: FL + RR — FL swings forward, RR swings backward
+  doFrontLeftKneeStraight(); doRearRightKneeStraight();
+  basic.pause(step / 2);
+  doFrontLeftShoulderForward(); doRearRightShoulderBackward();
+  basic.pause(step / 2);
+  doFrontLeftKneeDown(); doRearRightKneeDown();
+  basic.pause(step / 2);
+  doFrontLeftShoulderStraight(); doRearRightShoulderStraight();
+}
+
 // --- Atomic joint action functions ---
 // Knees: "down" = leg extended (standing), "straight" = NEUTRAL_ANGLE, "up" = leg lifted
 // Shoulders: "forward" = leg swings forward, "straight" = NEUTRAL_ANGLE, "back" = leg swings back
